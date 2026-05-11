@@ -1,67 +1,116 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { motion, useMotionValue, useSpring } from "framer-motion";
 
 export function CustomCursor() {
-  const [isHovered, setIsHovered] = useState(false);
-  const cursorX = useMotionValue(-100);
-  const cursorY = useMotionValue(-100);
+  const [visible, setVisible] = useState(false);
+  const [clicking, setClicking] = useState(false);
+  const [hovering, setHovering] = useState(false);
+  const [trailDots, setTrailDots] = useState<{ x: number; y: number; id: number }[]>([]);
+  const trailIdRef = useRef(0);
 
-  const springConfig = { damping: 25, stiffness: 700 };
-  const cursorXSpring = useSpring(cursorX, springConfig);
-  const cursorYSpring = useSpring(cursorY, springConfig);
+  const mouseX = useMotionValue(0);
+  const mouseY = useMotionValue(0);
+
+  const springConfig = { damping: 25, stiffness: 300, mass: 0.5 };
+  const cursorX = useSpring(mouseX, springConfig);
+  const cursorY = useSpring(mouseY, springConfig);
+
+  const outerSpringConfig = { damping: 15, stiffness: 100, mass: 1 };
+  const outerX = useSpring(mouseX, outerSpringConfig);
+  const outerY = useSpring(mouseY, outerSpringConfig);
 
   useEffect(() => {
-    const moveCursor = (e: MouseEvent) => {
-      cursorX.set(e.clientX);
-      cursorY.set(e.clientY);
-    };
+    const handleMove = (e: MouseEvent) => {
+      mouseX.set(e.clientX);
+      mouseY.set(e.clientY);
+      setVisible(true);
 
-    const handleHover = (e: MouseEvent) => {
+      // Trail dots
+      const id = trailIdRef.current++;
+      setTrailDots(prev => [...prev.slice(-6), { x: e.clientX, y: e.clientY, id }]);
+    };
+    const handleDown  = () => setClicking(true);
+    const handleUp    = () => setClicking(false);
+    const handleEnter = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (
-        target.tagName === "A" ||
-        target.tagName === "BUTTON" ||
-        target.closest("button") ||
-        target.closest("a") ||
-        target.classList.contains("cursor-pointer")
-      ) {
-        setIsHovered(true);
-      } else {
-        setIsHovered(false);
-      }
+      setHovering(
+        !!(target.closest("a") ||
+          target.closest("button") ||
+          target.getAttribute("data-cursor-hover"))
+      );
     };
+    const handleLeave = () => setVisible(false);
 
-    window.addEventListener("mousemove", moveCursor);
-    window.addEventListener("mouseover", handleHover);
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mousedown", handleDown);
+    window.addEventListener("mouseup", handleUp);
+    document.addEventListener("mouseover", handleEnter);
+    document.addEventListener("mouseleave", handleLeave);
 
     return () => {
-      window.removeEventListener("mousemove", moveCursor);
-      window.removeEventListener("mouseover", handleHover);
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mousedown", handleDown);
+      window.removeEventListener("mouseup", handleUp);
+      document.removeEventListener("mouseover", handleEnter);
+      document.removeEventListener("mouseleave", handleLeave);
     };
-  }, [cursorX, cursorY]);
+  }, [mouseX, mouseY]);
+
+  if (!visible) return null;
 
   return (
     <>
+      {/* Trail */}
+      {trailDots.map((dot, i) => (
+        <div
+          key={dot.id}
+          className="fixed pointer-events-none z-[9997] rounded-full"
+          style={{
+            left: dot.x,
+            top: dot.y,
+            width: (i + 1) * 2,
+            height: (i + 1) * 2,
+            backgroundColor: `rgba(0, 229, 255, ${(i / trailDots.length) * 0.2})`,
+            transform: "translate(-50%, -50%)",
+            transition: "opacity 0.3s",
+          }}
+        />
+      ))}
+
+      {/* Outer ring */}
       <motion.div
-        className="fixed top-0 left-0 w-8 h-8 rounded-full border border-primary pointer-events-none z-[9999] mix-blend-difference"
+        className="fixed pointer-events-none z-[9998] rounded-full border border-primary/40"
         style={{
-          x: cursorXSpring,
-          y: cursorYSpring,
-          translateX: "-50%",
-          translateY: "-50%",
-          scale: isHovered ? 2.5 : 1,
+          left: outerX,
+          top: outerY,
+          width: hovering ? 60 : clicking ? 30 : 40,
+          height: hovering ? 60 : clicking ? 30 : 40,
+          x: hovering ? -30 : clicking ? -15 : -20,
+          y: hovering ? -30 : clicking ? -15 : -20,
+          backdropFilter: "blur(2px)",
+          boxShadow: hovering ? "0 0 20px rgba(0,229,255,0.3)" : "none",
         }}
+        transition={{ duration: 0.15 }}
       />
+
+      {/* Inner dot */}
       <motion.div
-        className="fixed top-0 left-0 w-2 h-2 bg-primary rounded-full pointer-events-none z-[9999]"
+        className="fixed pointer-events-none z-[9999] rounded-full"
         style={{
-          x: cursorX,
-          y: cursorY,
-          translateX: "-50%",
-          translateY: "-50%",
+          left: cursorX,
+          top: cursorY,
+          x: -4,
+          y: -4,
+          width: clicking ? 6 : 8,
+          height: clicking ? 6 : 8,
+          background: hovering
+            ? "rgba(0, 229, 255, 0.9)"
+            : "rgba(255, 255, 255, 0.9)",
+          boxShadow: "0 0 10px rgba(0, 229, 255, 0.6)",
         }}
+        transition={{ duration: 0.1 }}
       />
     </>
   );
